@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "SIGA - PostgreSQL local",
+      "Group": "SIGA",
+      "Host": "host.docker.internal",
+      "Port": 5432,
+      "MaintenanceDB": "siga_suiza_2026",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "Comment": "Base de datos local de SIGA (password: admin)"
+    }
+  }
+}
