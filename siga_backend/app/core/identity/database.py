@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base  # 👈 AGREGAR declarative_base aquí
+from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import MetaData
 from ..config import settings
 
@@ -8,10 +8,14 @@ metadata = MetaData()
 Base = declarative_base(metadata=metadata)
 
 engine = create_async_engine(
-    settings.database_url, 
+    settings.database_url,
     echo=settings.debug,
     pool_pre_ping=True,
-    pool_recycle=300
+    pool_recycle=300,
+    connect_args={
+        "ssl": False,    # red privada de Railway: no se necesita SSL
+        "timeout": 10,   # falla rápido si no puede conectar
+    },
 )
 
 # Session local para Identity
