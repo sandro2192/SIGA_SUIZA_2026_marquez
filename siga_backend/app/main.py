@@ -289,11 +289,13 @@ async def initialize_core():
             logger.warning("⚠️  NATS no disponible - Continuando sin Event Bus")
     
     # 3. Descubrir módulos si está habilitado
+    # Si falla (por ejemplo, falta la tabla core_modules), el Core sigue funcionando
     if settings.modules_auto_discover:
-        discovered = await module_runtime.discover_modules()
-        logger.info(f"📦 Módulos descubiertos: {len(discovered)}")
-    
-   
+        try:
+            discovered = await module_runtime.discover_modules()
+            logger.info(f"📦 Módulos descubiertos: {len(discovered)}")
+        except Exception as e:
+            logger.error(f"⚠️  No se pudieron descubrir módulos, el Core continúa: {e}")
     
     # 5. Publicar evento de core iniciado
     if settings.enable_nats and event_bus.connected:
