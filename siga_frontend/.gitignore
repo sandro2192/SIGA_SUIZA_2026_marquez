@@ -26,3 +26,5 @@ dist-ssr
 # Environment variables
 .env
 .env.*
+# La URL pública del backend sí se versiona (no contiene secretos).
+!.env.production

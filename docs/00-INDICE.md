@@ -49,6 +49,7 @@
 | [14-PLAN-MATRICULAS-CASUISTICAS.md](14-PLAN-MATRICULAS-CASUISTICAS.md) | Plan de matrículas y casuísticas: fases, extemporánea, bloqueos y nóminas |
 | [15-PROCESOS-NEGOCIO.md](15-PROCESOS-NEGOCIO.md) | Procesos de negocio y flujos operativos (especificación viva): parser de planes, ingesta de admitidos, periodos y matrícula por tipo de estudiante |
 | [16-ENTORNO-DOCKER.md](16-ENTORNO-DOCKER.md) | Entorno Docker + pgAdmin: arquitectura, configuración, comandos, accesos y solución de problemas |
+| [17-DESPLIEGUE-VERCEL-RAILWAY.md](17-DESPLIEGUE-VERCEL-RAILWAY.md) | Despliegue Vercel + Railway: variables, rewrites, base de datos y credenciales |
 
 ### Anexos y Documentos de Soporte
 
