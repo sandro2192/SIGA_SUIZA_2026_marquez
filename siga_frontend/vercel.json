@@ -1,7 +1,21 @@
 {
-  "framework": "vite",
-  "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/auth/:path*",
+      "destination": "https://sigasuiza2026marquez-production.up.railway.app/auth/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://sigasuiza2026marquez-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/core/:path*",
+      "destination": "https://sigasuiza2026marquez-production.up.railway.app/core/:path*"
+    },
+    {
+      "source": "/ws",
+      "destination": "https://sigasuiza2026marquez-production.up.railway.app/ws"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
