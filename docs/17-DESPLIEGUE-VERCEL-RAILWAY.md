@@ -15,6 +15,11 @@ Railway (backend + PostgreSQL gestionado)
 
 ## Frontend (Vercel)
 
+URL: **https://siga-suiza-2026-marquez.vercel.app**
+
+> El dominio `https://siga-suiza-2026.vercel.app` corresponde a un despliegue
+> antiguo y no debe usarse.
+
 `siga_frontend/.env.production` define el backend público que Vite inyecta en
 el build de producción:
 
