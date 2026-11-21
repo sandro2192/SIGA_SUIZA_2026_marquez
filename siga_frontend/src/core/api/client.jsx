@@ -1,5 +1,24 @@
-export const API_BASE = import.meta.env.VITE_API_URL || '';
-export const WS_BASE = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+function normalizeHttpBase(value) {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  return withScheme.replace(/\/+$/, '');
+}
+
+function normalizeWsBase(value) {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  const withScheme = /^wss?:\/\//i.test(raw)
+    ? raw
+    : `${raw.startsWith('http://') ? 'ws://' : 'wss://'}${raw.replace(/^https?:\/\//i, '')}`;
+  return withScheme.replace(/\/+$/, '');
+}
+
+const apiBaseEnv = normalizeHttpBase(import.meta.env.VITE_API_URL);
+const wsBaseEnv = normalizeWsBase(import.meta.env.VITE_WS_URL || apiBaseEnv);
+
+export const API_BASE = apiBaseEnv;
+export const WS_BASE = wsBaseEnv || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
 
 class SIGAApiClient {
   constructor() {
