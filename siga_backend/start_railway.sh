@@ -64,5 +64,10 @@ for _ in range(30):
 print(f"microservicios listos: {ok}/{len(ports)}")
 PY
 
-echo "🌐 Iniciando Core Gateway en 0.0.0.0:$PORT..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+# Railway enruta el trafico publico hacia el puerto 8000 del contenedor
+# (verificado en los logs de red: 100.64.0.1 -> contenedor:8000), mientras que
+# la variable $PORT llega como 8080 y el core terminaba escuchando ahi -> 502.
+CORE_PORT="${SIGA_CORE_PORT:-8000}"
+
+echo "🌐 Iniciando Core Gateway en 0.0.0.0:$CORE_PORT..."
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port "$CORE_PORT"
