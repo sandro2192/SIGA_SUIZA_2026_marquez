@@ -17,3 +17,5 @@ python-jose[cryptography]>=3.5.0
 redis>=8.1.0
 pandas>=3.0.6
 openpyxl>=3.1.5
+# Motor de lectura Excel rápido (y soporte de .xls / .xlsm) para el parser MINEDU
+python-calamine>=0.9.1

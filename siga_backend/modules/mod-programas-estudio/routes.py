@@ -35,6 +35,25 @@ class ProgramaResponse(ProgramaBase):
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+# Schemas de importación masiva (Importar Plan MINEDU)
+class UnidadImportSchema(BaseModel):
+    nombre: str
+    horas_teoria: int = 0
+    horas_practica: int = 0
+    creditos: int = 0
+    orden: int = 0
+
+class ModuloImportSchema(BaseModel):
+    nombre: str
+    periodo: int = 1
+    horas_totales: int = 0
+    creditos: int = 0
+    orden: int = 1
+    unidades: List[UnidadImportSchema] = []
+
+class ProgramaImportSchema(ProgramaCreate):
+    modulos: List[ModuloImportSchema] = []
+
 # Schemas Periodo Academico
 class PeriodoBase(BaseModel):
     codigo: str
@@ -66,23 +85,28 @@ async def health_check():
     return {"status": "healthy", "module": "mod-programas-estudio"}
 
 # Endpoints CRUD
-@router.post("/programas", response_model=ProgramaResponse, status_code=status.HTTP_201_CREATED)
-async def crear_programa(programa: ProgramaCreate, request: Request, db: AsyncSession = Depends(get_db)):
+async def _validar_duplicado(db: AsyncSession, nombre: str, codigo: str) -> None:
+    """Bloquea carreras repetidas por código (CNOF) o por denominación."""
     import unicodedata
-    def normalize_str(s: str) -> str:
+    def normalize_str(s):
         if not s:
             return ""
         return "".join(c for c in unicodedata.normalize("NFD", s.strip().lower()) if unicodedata.category(c) != "Mn")
 
-    codigo_norm = programa.codigo.strip().upper()
-    nombre_norm = normalize_str(programa.nombre)
+    codigo_norm = codigo.strip().upper()
+    nombre_norm = normalize_str(nombre)
 
     all_existentes = (await db.execute(select(ProgramaEstudio))).scalars().all()
     for p in all_existentes:
         if p.codigo and p.codigo.strip().upper() == codigo_norm:
-            raise HTTPException(status_code=400, detail=f"Ya existe un programa de estudio con el código '{programa.codigo}'")
+            raise HTTPException(status_code=400, detail=f"Ya existe un programa de estudio con el código '{codigo}'")
         if normalize_str(p.nombre) == nombre_norm:
-            raise HTTPException(status_code=400, detail=f"El programa de estudio '{programa.nombre}' ya existe en el catálogo institucional")
+            raise HTTPException(status_code=400, detail=f"El programa de estudio '{nombre}' ya existe en el catálogo institucional")
+
+
+@router.post("/programas", response_model=ProgramaResponse, status_code=status.HTTP_201_CREATED)
+async def crear_programa(programa: ProgramaCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    await _validar_duplicado(db, programa.nombre, programa.codigo)
 
     db_programa = ProgramaEstudio(**programa.model_dump())
     db.add(db_programa)
@@ -99,6 +123,64 @@ async def crear_programa(programa: ProgramaCreate, request: Request, db: AsyncSe
         }
     )
     db.add(event)
+    await db.commit()
+    await db.refresh(db_programa)
+    return db_programa
+
+
+@router.post("/programas/importar", response_model=ProgramaResponse, status_code=status.HTTP_201_CREATED)
+async def importar_programa_con_malla(
+    payload: ProgramaImportSchema,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Crea la carrera junto con toda su malla (módulos y unidades) en una sola
+    petición y una sola transacción.
+
+    Lo usa "Importar Plan MINEDU": antes el frontend creaba la carrera y luego
+    módulo por módulo / unidad por unidad (~50 peticiones), lo que tardaba más
+    de un minuto y podía quedar a medias si alguna petición fallaba.
+    """
+    await _validar_duplicado(db, payload.nombre, payload.codigo)
+
+    programa_fields = payload.model_dump(exclude={"modulos"})
+    db_programa = ProgramaEstudio(**programa_fields)
+    db.add(db_programa)
+    await db.flush()
+
+    for mod in payload.modulos:
+        db_modulo = ProgramaModulo(
+            programa_id=db_programa.id,
+            nombre=mod.nombre,
+            periodo=mod.periodo or 1,
+            horas_totales=mod.horas_totales,
+            creditos=mod.creditos,
+            orden=mod.orden
+        )
+        db.add(db_modulo)
+        await db.flush()
+
+        for ud in mod.unidades:
+            db.add(ProgramaUnidad(
+                programa_modulo_id=db_modulo.id,
+                nombre=ud.nombre,
+                horas_teoria=ud.horas_teoria,
+                horas_practica=ud.horas_practica,
+                creditos=ud.creditos,
+                orden=ud.orden
+            ))
+
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    db.add(OutboxEvent(
+        event_type="carrera.creada",
+        payload={
+            "id": db_programa.id,
+            "nombre": db_programa.nombre,
+            "codigo": db_programa.codigo,
+            "metadata": {"request_id": request_id, "origen": "importar-minedu"}
+        }
+    ))
     await db.commit()
     await db.refresh(db_programa)
     return db_programa

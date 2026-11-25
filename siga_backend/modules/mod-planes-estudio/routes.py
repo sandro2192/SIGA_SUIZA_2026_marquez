@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Request, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 from database import get_db, OutboxEvent
@@ -160,54 +160,52 @@ async def actualizar_plan(plan_id: int, plan: PlanBase, request: Request, db: As
     await db.refresh(db_plan)
     return db_plan
 
+# Extensiones admitidas para el archivo MINEDU (comparación sin distinguir mayúsculas)
+PLAN_MINEDU_EXTENSIONES = (".xlsx", ".xlsm", ".xls")
+
+
+def _validar_extension_minedu(filename: Optional[str]) -> None:
+    if not filename or not filename.lower().endswith(PLAN_MINEDU_EXTENSIONES):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de archivo inválido. Debe ser Excel (.xlsx, .xlsm o .xls)"
+        )
+
+
 @router.post("/planes/parse-minedu")
 async def preview_plan_minedu(file: UploadFile = File(...)):
     """
     Lee el archivo Excel y devuelve la estructura JSON sin guardar en la BD.
     Ideal para un 'Preview' en el Frontend.
     """
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Formato de archivo inválido. Debe ser Excel (.xlsx o .xls)")
-        
+    _validar_extension_minedu(file.filename)
+
     contents = await file.read()
     success, data, message = ExcelMineduParser.parse_plan_estudio(contents)
-    
+
     if not success:
         raise HTTPException(status_code=400, detail=message)
-        
+
     return {
         "message": "Plan estructurado exitosamente",
         "data": data
     }
 
-@router.post("/planes/importar-minedu")
-async def importar_plan_minedu(
-    request: Request, 
-    file: UploadFile = File(...), 
-    codigo: Optional[str] = Form(None),
-    nombre: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db)
-):
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Formato de archivo inválido. Debe ser Excel (.xlsx o .xls)")
-        
-    contents = await file.read()
-    success, data, message = ExcelMineduParser.parse_plan_estudio(contents)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-        
-    # Si se especificó código o nombre explícito desde el frontend (edición previa), sobreescribir:
-    if codigo and codigo.strip():
-        data["codigo"] = codigo.strip()
-    if nombre and nombre.strip():
-        data["nombre"] = nombre.strip()
 
+class PlanMineduImportPayload(BaseModel):
+    """Plan ya extraído por el frontend: evita volver a subir y reparsear el Excel."""
+    data: Dict[str, Any]
+    codigo: Optional[str] = None
+    nombre: Optional[str] = None
+
+
+async def _guardar_plan_minedu(request: Request, data: Dict[str, Any], db: AsyncSession) -> Dict[str, Any]:
+    """Persiste (o sincroniza de forma idempotente) el plan recibido."""
     # Verificar si el código ya existe
     result = await db.execute(select(PlanEstudio).where(PlanEstudio.codigo == data["codigo"]))
     existing_plan = result.scalar_one_or_none()
     valid_plan_fields = {"codigo", "nombre", "descripcion", "nivel_formativo", "creditos_totales", "horas_totales", "fecha_aprobacion", "resolucion_aprobacion", "estado"}
-    
+
     if existing_plan:
         # Si ya existe un plan con este código, sincronizamos sus metadatos de forma idempotente
         for k in valid_plan_fields:
@@ -227,18 +225,18 @@ async def importar_plan_minedu(
     db_plan = PlanEstudio(**plan_data)
     db.add(db_plan)
     await db.flush()
-    
+
     # Crear módulos y unidades
     for mod_data in data.get("modulos", []):
         unidades_data = mod_data.pop("unidades", [])
         db_modulo = ModuloPlan(**mod_data, plan_id=db_plan.id)
         db.add(db_modulo)
         await db.flush()
-        
+
         for ud_data in unidades_data:
             db_unidad = UnidadPlan(**ud_data, modulo_id=db_modulo.id)
             db.add(db_unidad)
-            
+
     # Registrar en Outbox
     request_id = request.headers.get("X-Request-ID", "unknown")
     event = OutboxEvent(
@@ -253,13 +251,69 @@ async def importar_plan_minedu(
     db.add(event)
     await db.commit()
     await db.refresh(db_plan)
-    
+
     return {
         "message": "Plan importado exitosamente",
         "plan_id": db_plan.id,
         "codigo": db_plan.codigo,
         "modulos_importados": len(data.get("modulos", []))
     }
+
+
+@router.post("/planes/importar-minedu")
+async def importar_plan_minedu(
+    request: Request,
+    file: UploadFile = File(...),
+    codigo: Optional[str] = Form(None),
+    nombre: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    _validar_extension_minedu(file.filename)
+
+    contents = await file.read()
+    success, data, message = ExcelMineduParser.parse_plan_estudio(contents)
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Si se especificó código o nombre explícito desde el frontend (edición previa), sobreescribir:
+    if codigo and codigo.strip():
+        data["codigo"] = codigo.strip()
+    if nombre and nombre.strip():
+        data["nombre"] = nombre.strip()
+
+    return await _guardar_plan_minedu(request, data, db)
+
+
+@router.post("/planes/importar-minedu-json")
+async def importar_plan_minedu_json(
+    payload: PlanMineduImportPayload,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Importa el plan que el frontend ya extrajo con /planes/parse-minedu.
+
+    Reutilizar el JSON del preview evita una segunda subida y un segundo
+    parseo del Excel (que sumaba varios segundos a cada importación).
+    """
+    data = dict(payload.data or {})
+    data.setdefault("modulos", [])
+
+    codigo = (payload.codigo or data.get("codigo") or "").strip()
+    nombre = (payload.nombre or data.get("nombre") or "").strip()
+
+    if not codigo or not nombre:
+        raise HTTPException(
+            status_code=400,
+            detail="La carrera debe contar con código (CNOF) y denominación válidos."
+        )
+
+    data["codigo"] = codigo
+    data["nombre"] = nombre
+
+    return await _guardar_plan_minedu(request, data, db)
+
 
 @router.delete("/planes/{plan_id}")
 async def eliminar_plan(plan_id: int, request: Request, db: AsyncSession = Depends(get_db)):

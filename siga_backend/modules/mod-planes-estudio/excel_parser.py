@@ -55,9 +55,26 @@ class ExcelMineduParser:
         return None
 
     @staticmethod
+    def _open_workbook(file_contents: bytes) -> pd.ExcelFile:
+        """
+        Abre el libro con el motor más rápido disponible.
+
+        Los libros MINEDU traen rangos usados enormes (miles de celdas con
+        formato) y openpyxl tarda ~5 s en recorrerlos. `calamine` (Rust)
+        devuelve el mismo resultado ~10 veces más rápido y además soporta el
+        formato antiguo `.xls`. Si el motor no está disponible o el archivo lo
+        rechaza, se retrocede a openpyxl.
+        """
+        try:
+            return pd.ExcelFile(io.BytesIO(file_contents), engine="calamine")
+        except Exception as exc:  # noqa: BLE001 - cualquier fallo usa el motor clásico
+            logger.info(f"No se pudo usar calamine ({exc}); se usa openpyxl")
+            return pd.ExcelFile(io.BytesIO(file_contents))
+
+    @staticmethod
     def parse_plan_estudio(file_contents: bytes) -> Tuple[bool, Dict[str, Any], str]:
         try:
-            excel_file = pd.ExcelFile(io.BytesIO(file_contents))
+            excel_file = ExcelMineduParser._open_workbook(file_contents)
             sheet_names = excel_file.sheet_names
             
             plan_data = {

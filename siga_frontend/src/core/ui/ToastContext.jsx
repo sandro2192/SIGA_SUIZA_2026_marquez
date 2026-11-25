@@ -8,7 +8,7 @@ const ToastContext = createContext(null);
  * ToastItem representa un mensaje flotante individual.
  */
 function ToastItem({ toast, onClose }) {
-  const { id, type, message, duration } = toast;
+  const { id, type, message, title, duration } = toast;
 
   useEffect(() => {
     if (!duration || duration <= 0) return;
@@ -61,6 +61,11 @@ function ToastItem({ toast, onClose }) {
         {config.icon}
       </span>
       <div className="flex-1 text-sm font-medium leading-relaxed break-words">
+        {title ? (
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-extrabold uppercase tracking-wider mb-1 ${config.badge}`}>
+            {title}
+          </span>
+        ) : null}
         {message}
       </div>
       <button
@@ -110,16 +115,26 @@ export function ToastProvider({ children }) {
     setToasts([]);
   }, []);
 
-  const addToast = useCallback((type, message, duration) => {
+  const addToast = useCallback((type, message, duration, title) => {
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 7);
-    setToasts((prev) => [...prev, { id, type, message, duration }]);
+    setToasts((prev) => [...prev, { id, type, message, duration, title }]);
     return id;
   }, []);
 
-  const success = useCallback((msg, dur = 4000) => addToast('success', msg, dur), [addToast]);
-  const error = useCallback((msg, dur = 6000) => addToast('error', msg, dur), [addToast]);
-  const warning = useCallback((msg, dur = 5000) => addToast('warning', msg, dur), [addToast]);
-  const info = useCallback((msg, dur = 4000) => addToast('info', msg, dur), [addToast]);
+  // Segundo argumento flexible: si es un número es la duración (ms); si es
+  // texto se interpreta como título del toast. Antes un título (p.ej.
+  // toast.error(msg, 'Error de Conexión')) se usaba como duración y el
+  // mensaje desaparecía de inmediato, dejando la operación sin feedback.
+  const emit = useCallback((type, defaultDuration) => (msg, segundoArg) => {
+    const title = typeof segundoArg === 'string' ? segundoArg : undefined;
+    const duration = typeof segundoArg === 'number' ? segundoArg : defaultDuration;
+    return addToast(type, msg, duration, title);
+  }, [addToast]);
+
+  const success = useCallback(emit('success', 4000), [emit]);
+  const error = useCallback(emit('error', 6000), [emit]);
+  const warning = useCallback(emit('warning', 5000), [emit]);
+  const info = useCallback(emit('info', 4000), [emit]);
 
   // INTERCEPTOR GLOBAL: Erradicar al 100% las ventanas emergentes nativas del navegador (window.alert y window.prompt)
   useEffect(() => {

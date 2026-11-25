@@ -67,6 +67,12 @@ class HTTPGateway:
             target_url = f"{target_url}?{request.url.query}"
             
         headers = self._prepare_forward_headers(request, module_name, user)
+
+        # La importación de planes MINEDU procesa archivos Excel y puede tardar
+        # más que el timeout general del gateway.
+        request_timeout = self.timeout
+        if path.rstrip("/").endswith(("/planes/parse-minedu", "/planes/importar-minedu")):
+            request_timeout = max(request_timeout, 120)
         
         try:
             client = await self.get_client()
@@ -80,7 +86,8 @@ class HTTPGateway:
                     url=target_url,
                     headers=headers,
                     content=await request.body(),
-                    follow_redirects=True
+                    follow_redirects=True,
+                    timeout=request_timeout
                 )
             else:
                 response = await client.request(
@@ -88,7 +95,8 @@ class HTTPGateway:
                     url=target_url,
                     headers=headers,
                     content=await request.body(),
-                    follow_redirects=True
+                    follow_redirects=True,
+                    timeout=request_timeout
                 )
             
             # Si el backend del módulo envía un 5xx, lo disparamos como excepción para el circuit breaker (opcional)
