@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { API_BASE } from '../../core/api/client';
+import { usePrograms } from '../../core/api/usePrograms';
 import techBg from '../../assets/tech-bg.jpg';
 import { DEPARTAMENTOS, getProvincias, getDistritos } from './ubigeoPeru';
 import {
@@ -8,20 +9,6 @@ import {
   ShieldAlert, AlertTriangle, Lock, Check, ChevronDown,
   Building2, Activity, GraduationCap, HeartPulse, ShieldCheck
 } from 'lucide-react';
-
-const PROGRAMAS = {
-  1: 'Administración de Operaciones Turísticas',
-  2: 'Asistencia Administrativa',
-  3: 'Contabilidad',
-  4: 'Construcción Civil',
-  5: 'Gestión Administrativa',
-  6: 'Desarrollo de Sistemas de Información',
-  7: 'Electricidad Industrial',
-  8: 'Enfermería Técnica',
-  9: 'Manejo Forestal',
-  10: 'Mecatrónica Automotriz',
-  11: 'Producción Agropecuaria',
-};
 
 function SearchSelect({
   label,
@@ -261,6 +248,7 @@ const EditField = ({
 };
 
 export function EditStudentModal({ student, onClose, onUpdated }) {
+  const programas = usePrograms();
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -399,7 +387,8 @@ export function EditStudentModal({ student, onClose, onUpdated }) {
     }
   };
 
-  const carreraNombre = PROGRAMAS[student.programa_id] || (student.programa_id ? `Programa ${student.programa_id}` : 'Sin carrera');
+  const carreraNombre = programas.find(p => String(p.id) === String(student.programa_id))?.nombre
+    || (student.programa_id ? `Programa ${student.programa_id}` : 'Sin carrera');
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">

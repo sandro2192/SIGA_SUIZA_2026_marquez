@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../core/auth/useAuth';
 import { API_BASE } from '../../core/api/client';
+import { usePrograms } from '../../core/api/usePrograms';
 import { useToast } from '../../core/ui/ToastContext';
 import techBg from '../../assets/tech-bg.jpg';
 import { EditStudentModal } from './EditStudentModal';
@@ -410,7 +411,7 @@ const createEmptyStudentForm = (programaId = '') => ({
   documentos_completos: true, fecha_limite_documentos: ''
 });
 
-const PROGRAMAS = [
+const PROGRAMAS_FALLBACK = [
   { id: 'ALL', label: 'Todos los Programas' },
   { id: '1', label: 'Administración de Operaciones Turísticas' },
   { id: '2', label: 'Asistencia Administrativa' },
@@ -425,24 +426,22 @@ const PROGRAMAS = [
   { id: '11', label: 'Producción Agropecuaria' },
 ];
 
-const PROGRAMAS_OPTIONS = [
-  { value: '', label: 'Seleccione una carrera...' },
-  ...PROGRAMAS.filter(programa => programa.id !== 'ALL').map(programa => ({
-    value: programa.id,
-    label: programa.label,
-  })),
-];
+/** "Todos" + las carreras registradas en Gestión Académica (fallback mientras cargan). */
+function useProgramaOpciones() {
+  const programas = usePrograms();
+  if (programas.length === 0) return PROGRAMAS_FALLBACK;
+  return [
+    { id: 'ALL', label: 'Todos los Programas' },
+    ...programas.map(p => ({ id: String(p.id), label: p.nombre })),
+  ];
+}
 
 const TIPOS_SANGRE = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
 
-const getProgramaLabel = (programaId) => {
-  const programa = PROGRAMAS.find(item => item.id === String(programaId));
-  return programa ? programa.label : 'Sin carrera seleccionada';
-};
-
-const compareStudentsByCarrera = (a, b) => {
-  const carreraA = a.programa_id ? getProgramaLabel(a.programa_id) : '';
-  const carreraB = b.programa_id ? getProgramaLabel(b.programa_id) : '';
+const compareStudentsByCarrera = (a, b, opciones) => {
+  const etiqueta = (id) => opciones.find(item => item.id === String(id))?.label || 'Sin carrera seleccionada';
+  const carreraA = a.programa_id ? etiqueta(a.programa_id) : '';
+  const carreraB = b.programa_id ? etiqueta(b.programa_id) : '';
   if (!carreraA !== !carreraB) return carreraA ? -1 : 1;
   const porCarrera = carreraA.localeCompare(carreraB, 'es', { sensitivity: 'base' });
   if (porCarrera !== 0) return porCarrera;
@@ -452,6 +451,7 @@ const compareStudentsByCarrera = (a, b) => {
 };
 
 function ProgramaFilter({ value, onChange }) {
+  const PROGRAMAS = useProgramaOpciones();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
   const selected = PROGRAMAS.find(p => String(p.id) === String(value)) || PROGRAMAS[0];
@@ -534,6 +534,18 @@ function ProgramaFilter({ value, onChange }) {
 export function StudentMaster() {
   const { user } = useAuth();
   const toast = useToast();
+  const PROGRAMAS = useProgramaOpciones();
+  const PROGRAMAS_OPTIONS = [
+    { value: '', label: 'Seleccione una carrera...' },
+    ...PROGRAMAS.filter(programa => programa.id !== 'ALL').map(programa => ({
+      value: programa.id,
+      label: programa.label,
+    })),
+  ];
+  const getProgramaLabel = (programaId) => {
+    const programa = PROGRAMAS.find(item => item.id === String(programaId));
+    return programa ? programa.label : 'Sin carrera seleccionada';
+  };
   const userRoles = user?.roles ? user.roles.map(r => typeof r === 'string' ? r : r.nombre || r.name) : [];
   const primaryRole = user?.is_superuser ? 'superadmin' : (userRoles.length > 0 ? userRoles[0] : (user?.role || 'invitado'));
   const userRole = primaryRole;
@@ -680,7 +692,7 @@ export function StudentMaster() {
 
       const data = await res.json();
       const dataArray = Array.isArray(data) ? data : [];
-      const sorted = [...dataArray].sort(compareStudentsByCarrera);
+      const sorted = [...dataArray].sort((a, b) => compareStudentsByCarrera(a, b, PROGRAMAS));
 
       const term = String(val || '').trim();
       if (term.length >= 3) {

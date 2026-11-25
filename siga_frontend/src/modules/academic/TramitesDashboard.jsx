@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../core/api/client';
-import { Plus, Eye, FileText, Repeat, GraduationCap } from 'lucide-react';
+import { Plus, Eye, FileText, Repeat, GraduationCap, X } from 'lucide-react';
 import { ConvalidacionesTab } from './ConvalidacionesTab';
 import { BecasTab } from './BecasTab';
+
+const TIPOS_TRAMITE = [
+  'Constancia de Estudios',
+  'Constancia de Egreso',
+  'Certificado Oficial de Estudios',
+  'Reserva de Matrícula (Licencia)',
+  'Rectificación de Nota (Auditoría)',
+  'Retiro Excepcional',
+];
 
 export function TramitesDashboard() {
   const [activeTab, setActiveTab] = useState('solicitudes');
@@ -10,19 +19,30 @@ export function TramitesDashboard() {
   
   // States for Solicitudes (TUPA)
   const [solicitudes, setSolicitudes] = useState([]);
+  const [estudiantes, setEstudiantes] = useState([]);
   
   const [error, setError] = useState('');
+
+  // Modal state
+  const [showTramiteModal, setShowTramiteModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tramiteForm, setTramiteForm] = useState({
+    estudiante_id: '',
+    tipo_tramite: TIPOS_TRAMITE[0],
+    observaciones: '',
+  });
 
   const fetchSolicitudes = async () => {
     setLoading(true);
     setError('');
     try {
-      const [tramites, estudiantes] = await Promise.all([
+      const [tramites, ests] = await Promise.all([
         apiClient.request('/api/mod-gestion-academica/tramites/'),
         apiClient.request('/api/mod-gestion-academica/estudiantes/').catch(() => []),
       ]);
-      const nombres = new Map((estudiantes || []).map(e => [e.id, `${e.apellidos}, ${e.nombres}`]));
+      const nombres = new Map((ests || []).map(e => [e.id, `${e.apellidos}, ${e.nombres}`]));
       setSolicitudes((tramites || []).map(t => ({ ...t, nombre_alumno: nombres.get(t.estudiante_id) })));
+      setEstudiantes(ests || []);
     } catch (err) {
       console.error(err);
       setError('No se pudieron cargar los trámites.');
@@ -47,6 +67,31 @@ export function TramitesDashboard() {
       console.error(err);
       setSolicitudes(anterior);
       setError('No se pudo actualizar el estado del trámite.');
+    }
+  };
+
+  const handleCreateTramite = async (e) => {
+    e.preventDefault();
+    if (!tramiteForm.estudiante_id) return setError('Seleccione un estudiante.');
+    setSaving(true);
+    setError('');
+    try {
+      await apiClient.request('/api/mod-gestion-academica/tramites/', {
+        method: 'POST',
+        body: JSON.stringify({
+          estudiante_id: parseInt(tramiteForm.estudiante_id),
+          tipo_tramite: tramiteForm.tipo_tramite,
+          observaciones: tramiteForm.observaciones,
+        }),
+      });
+      setShowTramiteModal(false);
+      setTramiteForm({ estudiante_id: '', tipo_tramite: TIPOS_TRAMITE[0], observaciones: '' });
+      fetchSolicitudes();
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo registrar la solicitud.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -87,7 +132,10 @@ export function TramitesDashboard() {
             <div className="space-y-6 animate-fade-in">
               <div className="flex justify-between items-center mb-4">
                 <h4 className="text-lg font-bold text-slate-700">Solicitudes Ingresadas</h4>
-                <button className="btn-primary py-1.5 px-4 text-sm rounded-lg flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowTramiteModal(true)}
+                  className="btn-primary py-1.5 px-4 text-sm rounded-lg flex items-center gap-1.5"
+                >
                   <Plus size={16} /> Nueva Solicitud Manual
                 </button>
               </div>
@@ -156,6 +204,81 @@ export function TramitesDashboard() {
           {activeTab === 'becas' && <BecasTab />}
         </div>
       </div>
+
+      {/* MODAL: NUEVA SOLICITUD TUPA */}
+      {showTramiteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+              <h5 className="font-bold text-sm text-slate-900">Nueva Solicitud / Trámite TUPA</h5>
+              <button
+                onClick={() => setShowTramiteModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTramite} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Seleccionar Estudiante</label>
+                <select
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  value={tramiteForm.estudiante_id}
+                  onChange={e => setTramiteForm({ ...tramiteForm, estudiante_id: e.target.value })}
+                  required
+                >
+                  <option value="">-- Seleccionar Alumno --</option>
+                  {estudiantes.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.apellidos}, {e.nombres} - DNI: {e.dni}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Tipo de Trámite</label>
+                <select
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  value={tramiteForm.tipo_tramite}
+                  onChange={e => setTramiteForm({ ...tramiteForm, tipo_tramite: e.target.value })}
+                >
+                  {TIPOS_TRAMITE.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Observaciones / Número de FUT</label>
+                <textarea
+                  rows="3"
+                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  value={tramiteForm.observaciones}
+                  onChange={e => setTramiteForm({ ...tramiteForm, observaciones: e.target.value })}
+                  placeholder="Número de expediente o sustento..."
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowTramiteModal(false)}
+                  className="flex-1 py-2 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-all"
+                  disabled={saving}
+                >
+                  {saving ? 'Registrando...' : 'Registrar Solicitud'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
