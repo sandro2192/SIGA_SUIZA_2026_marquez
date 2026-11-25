@@ -20,6 +20,13 @@ if [ "$SKIP_MIGRATIONS" != "true" ]; then
 fi
 
 if [ "$#" -eq 0 ]; then
+    # En Railway (o si se fuerza con SIGA_ALL_IN_ONE=true) el contenedor debe
+    # levantar TODO: core gateway + los 7 microservicios internos en 127.0.0.1.
+    # Sin esto solo corre el gateway y todos los /api/* responden 503.
+    if [ -n "$RAILWAY_ENVIRONMENT" ] || [ -n "$RAILWAY_PROJECT_ID" ] || [ "$SIGA_ALL_IN_ONE" = "true" ]; then
+        echo "Starting SIGA all-in-one (Core Gateway + 7 microservicios)..."
+        exec sh ./start_railway.sh
+    fi
     echo "Starting SIGA Core con Hot Reload..."
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 else

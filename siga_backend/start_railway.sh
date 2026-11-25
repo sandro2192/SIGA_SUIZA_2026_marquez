@@ -43,7 +43,26 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8007 --app-dir modules/mod-au
 python -m uvicorn main:app --host 127.0.0.1 --port 8008 --app-dir modules/mod-evaluacion &
 python -m uvicorn main:app --host 127.0.0.1 --port 8009 --app-dir modules/mod-admision &
 
-sleep 2
+# Esperar a que los 7 microservicios respondan /health antes de arrancar el
+# core, para que el registro inicial los marque como HEALTHY (no OFFLINE).
+echo "⏳ Esperando a que los microservicios respondan /health..."
+python - <<'PY' || true
+import time, urllib.request
+ports = [8001, 8002, 8005, 8006, 8007, 8008, 8009]
+ok = 0
+for _ in range(30):
+    ok = 0
+    for p in ports:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{p}/health", timeout=1)
+            ok += 1
+        except Exception:
+            pass
+    if ok == len(ports):
+        break
+    time.sleep(1)
+print(f"microservicios listos: {ok}/{len(ports)}")
+PY
 
 echo "🌐 Iniciando Core Gateway en 0.0.0.0:$PORT..."
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
